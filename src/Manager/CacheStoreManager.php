@@ -357,19 +357,25 @@ final class CacheStoreManager implements CacheStoreContract
 
 
 
-    public function many(
-        array $keys
-    ): array {
+    public function many(array $keys): array
+    {
+        $mapping = [];
 
-        $keys = array_map(
-            fn(string $key) =>
-            $this->resolveKey($key),
-            $keys
+        foreach ($keys as $key) {
+            $mapping[$this->resolveKey($key)] = $key;
+        }
+
+        $results = $this->resolveDriver()->many(
+            array_keys($mapping)
         );
 
+        $resolved = [];
 
-        return $this->resolveDriver()
-            ->many($keys);
+        foreach ($results as $resolvedKey => $value) {
+            $resolved[$mapping[$resolvedKey]] = $value;
+        }
+
+        return $resolved;
     }
 
 

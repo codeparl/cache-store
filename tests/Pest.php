@@ -8,7 +8,6 @@ uses(
     TestCase::class,
     RefreshDatabase::class
 )->in('Integration', 'Feature');
-
 //<?php
 
 // DO NOT add namespace declarations here!

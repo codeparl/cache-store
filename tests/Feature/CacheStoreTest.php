@@ -185,3 +185,89 @@ it('isolates cache by context', function () {
         )->get('students')
     )->toBe(900);
 });
+it('stores and retrieves multiple values', function () {
+
+    CacheStore::putMany([
+        'students' => 500,
+        'teachers' => 40,
+        'classes' => 20,
+    ]);
+
+
+    expect(
+        CacheStore::many([
+            'students',
+            'teachers',
+            'classes',
+        ])
+    )->toBe([
+        'students' => 500,
+        'teachers' => 40,
+        'classes' => 20,
+    ]);
+});
+it('increments and decrements values', function () {
+
+    CacheStore::put(
+        'visits',
+        10
+    );
+
+
+    expect(
+        CacheStore::increment('visits')
+    )->toBe(11);
+
+
+    expect(
+        CacheStore::increment('visits', 5)
+    )->toBe(16);
+
+
+    expect(
+        CacheStore::decrement('visits', 6)
+    )->toBe(10);
+});
+it('flushes cache values', function () {
+
+    CacheStore::put(
+        'one',
+        1
+    );
+
+    CacheStore::put(
+        'two',
+        2
+    );
+
+
+    expect(
+        CacheStore::flush()
+    )->toBeTrue();
+
+
+    expect(
+        CacheStore::get('one')
+    )->toBeNull();
+
+
+    expect(
+        CacheStore::get('two')
+    )->toBeNull();
+});
+it('supports custom drivers', function () {
+
+    $factory = app(
+        \SchoolPalm\CacheStore\CacheDriverFactory::class
+    );
+
+
+    expect(
+        $factory->available()
+    )->toContain('array');
+
+
+    expect(
+        $factory->has('array')
+    )->toBeTrue();
+});

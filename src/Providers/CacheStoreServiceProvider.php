@@ -20,9 +20,9 @@ final class CacheStoreServiceProvider extends ServiceProvider
      * Registers:
      * - CacheSerializer as a singleton
      * - CacheConfiguration from the published config
-     * - CacheContextResolver with context-aware key building
-     * - CacheDriverFactory for creating driver instances
-     * - CacheStoreManager as the 'cache-store' singleton
+     * - CacheContextResolver
+     * - CacheDriverFactory
+     * - CacheStoreManager
      */
     public function register(): void
     {
@@ -31,12 +31,15 @@ final class CacheStoreServiceProvider extends ServiceProvider
             fn() => new CacheSerializer()
         );
 
+
         $this->app->singleton(
             CacheConfiguration::class,
             fn($app) => new CacheConfiguration(
-                $app->make('config')->get('cache-store', [])
+                $app->make('config')
+                    ->get('cache-store', [])
             )
         );
+
 
         $this->app->singleton(
             CacheKeyBuilder::class,
@@ -45,6 +48,7 @@ final class CacheStoreServiceProvider extends ServiceProvider
             )
         );
 
+
         $this->app->singleton(
             CacheContextResolver::class,
             fn($app) => new CacheContextResolver(
@@ -52,10 +56,12 @@ final class CacheStoreServiceProvider extends ServiceProvider
             )
         );
 
+
         $this->app->singleton(
             CacheDriverFactory::class,
             fn($app) => new CacheDriverFactory($app)
         );
+
 
         $this->app->singleton(
             'cache-store',
@@ -64,6 +70,54 @@ final class CacheStoreServiceProvider extends ServiceProvider
                 $app->make(CacheContextResolver::class),
                 $app->make(CacheConfiguration::class)
             )
+        );
+    }
+
+
+
+    /**
+     * Bootstrap package services.
+     *
+     * Publishes:
+     * - configuration
+     * - database migrations
+     */
+    public function boot(): void
+    {
+        /*
+        |--------------------------------------------------------------------------
+        | Publish Configuration
+        |--------------------------------------------------------------------------
+        */
+
+        $this->publishes(
+            [
+                __DIR__ . '/../../config/cache-store.php'
+                =>
+                config_path('cache-store.php'),
+            ],
+            'cache-store-config'
+        );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Publish Database Migrations
+        |--------------------------------------------------------------------------
+        */
+
+        $this->publishes(
+            [
+                __DIR__
+                    . '/../../database/migrations/create_cache_store_table.php'
+                =>
+                database_path(
+                    'migrations/'
+                        . date('Y_m_d_His')
+                        . '_create_cache_store_table.php'
+                ),
+            ],
+            'cache-store-migrations'
         );
     }
 }

@@ -1,8 +1,53 @@
 {
     "name": "schoolpalm/cache-store",
-    "description": "A context-aware cache abstraction layer for Laravel applications.",
+    "description": "A context-aware cache abstraction layer for Laravel applications with multi-tenant and multi-school support.",
     "type": "library",
     "license": "MIT",
+    "keywords": [
+        "laravel",
+        "cache",
+        "cache-store",
+        "multi-tenant",
+        "schoolpalm",
+        "context-aware",
+        "caching",
+        "laravel-package",
+        "psr-16",
+        "driver",
+        "array-cache",
+        "file-cache",
+        "redis-cache",
+        "database-cache"
+    ],
+    "authors": [
+        {
+            "name": "Mugabo Hassan",
+            "email": "dybarox@gmail.com",
+            "homepage": "https://schoolpalm.com",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "email": "support@schoolpalm.com",
+        "issues": "https://github.com/schoolpalm/cache-store/issues",
+        "source": "https://github.com/schoolpalm/cache-store"
+    },
+    "funding": [
+        {
+            "type": "other",
+            "url": "https://schoolpalm.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^12.0",
+        "illuminate/cache": "^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0",
+        "pestphp/pest": "^3.0",
+        "pestphp/pest-plugin-laravel": "^3.0"
+    },
     "autoload": {
         "psr-4": {
             "SchoolPalm\\CacheStore\\": "src/"
@@ -26,24 +71,6 @@
             }
         }
     },
-    "clear": "@php vendor/bin/testbench package:purge-skeleton --ansi",
-    "prepare": "@php vendor/bin/testbench package:discover --ansi",
-    "build": "@php vendor/bin/testbench workbench:build --ansi",
-    "require": {
-        "php": "^8.2",
-        "illuminate/support": "^12.0",
-        "illuminate/cache": "^12.0"
-    },
-    "require-dev": {
-        "orchestra/testbench": "^10.0",
-        "pestphp/pest": "^3.0",
-        "pestphp/pest-plugin-laravel": "^3.0"
-    },
-    "config": {
-        "allow-plugins": {
-            "pestphp/pest-plugin": true
-        }
-    },
     "scripts": {
         "post-autoload-dump": [
             "@clear",
@@ -61,5 +88,15 @@
             "@clear",
             "@php vendor/bin/pest"
         ]
-    }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
 }
+

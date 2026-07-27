@@ -113,7 +113,7 @@ return [
 
         'database' => [
 
-            'table' => 'cache',
+            'table' => 'cache_store',
 
         ],
 

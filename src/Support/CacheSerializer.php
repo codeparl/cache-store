@@ -11,11 +11,10 @@ final class CacheSerializer
     /**
      * Serialize a value for cache storage.
      *
-     * Uses PHP serialization to preserve:
-     * - arrays
-     * - objects
-     * - collections
-     * - complex data types
+     * Primitive values are stored directly so that
+     * atomic operations like increment/decrement can work.
+     *
+     * Complex values are PHP serialized.
      *
      * @param mixed $value
      * @return string
@@ -25,6 +24,12 @@ final class CacheSerializer
     ): string {
 
         try {
+
+            if ($this->isPrimitive($value)) {
+
+                return (string) $value;
+            }
+
 
             return serialize($value);
         } catch (\Throwable $e) {
@@ -40,16 +45,40 @@ final class CacheSerializer
 
 
     /**
-     * Unserialize a cached value.
+     * Restore cached value.
      *
-     * @param string $value
+     * @param mixed $value The raw value from the cache.
      * @return mixed
      */
     public function unserialize(
-        string $value
+        mixed $value
     ): mixed {
 
         try {
+
+            /*
+            |--------------------------------------------------------------------------
+            | Non-string values (e.g. raw integers from increment/decrement)
+            |--------------------------------------------------------------------------
+            */
+
+            if (!is_string($value)) {
+                return $value;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Primitive values
+            |--------------------------------------------------------------------------
+            */
+
+            if (!$this->isSerialized($value)) {
+
+                return $this->castPrimitive(
+                    $value
+                );
+            }
+
 
             return unserialize(
                 $value,
@@ -70,13 +99,70 @@ final class CacheSerializer
 
 
     /**
-     * Determine if a value is serialized.
+     * Determine primitive values.
+     *
+     * Booleans are excluded from primitive handling so they
+     * go through PHP serialize() and unserialize() correctly,
+     * preserving their type as boolean.
+     */
+    protected function isPrimitive(
+        mixed $value
+    ): bool {
+
+        return is_string($value)
+            || is_int($value)
+            || is_float($value);
+    }
+
+
+
+    /**
+     * Convert primitive values back.
+     */
+    protected function castPrimitive(
+        string $value
+    ): mixed {
+
+
+        if ($value === 'true') {
+            return true;
+        }
+
+
+        if ($value === 'false') {
+            return false;
+        }
+
+
+        if (is_numeric($value)) {
+
+            return str_contains($value, '.')
+                ? (float) $value
+                : (int) $value;
+        }
+
+
+        return $value;
+    }
+
+
+
+    /**
+     * Determine if value is PHP serialized.
      */
     public function isSerialized(
         mixed $value
     ): bool {
 
         if (!is_string($value)) {
+            return false;
+        }
+
+
+        if (
+            $value === ''
+            || $value === '0'
+        ) {
             return false;
         }
 
