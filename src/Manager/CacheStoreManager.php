@@ -17,15 +17,13 @@ use SchoolPalm\CacheStore\Support\CacheConfiguration;
 /**
  * Class CacheStoreManager
  *
- * High level cache manager.
+ * High-level cache manager.
  *
  * Provides:
- *
- * - context aware cache keys
- * - multiple cache drivers
- * - Laravel compatible cache API
- * - remember helpers
- * - atomic locks
+ * - Context-aware cache keys
+ * - Multiple cache drivers & dynamic store targeting
+ * - Remember helpers with stampede protection via atomic locks
+ * - Immutable fluency for safe context/driver chaining
  */
 final class CacheStoreManager implements CacheStoreContract
 {
@@ -36,18 +34,15 @@ final class CacheStoreManager implements CacheStoreContract
      */
     protected array $drivers = [];
 
-
     /**
      * Active driver.
      */
     protected ?string $driver = null;
 
-
     /**
-     * Active store.
+     * Active store configuration name.
      */
     protected ?string $store = null;
-
 
     /**
      * Active tags.
@@ -56,129 +51,112 @@ final class CacheStoreManager implements CacheStoreContract
      */
     protected array $tags = [];
 
-
     /**
-     * Current tenant.
+     * Current tenant context identifier.
      */
     protected ?string $tenantId = null;
 
-
     /**
-     * Current school.
+     * Current school context identifier.
      */
     protected ?string $schoolId = null;
 
-
-
     public function __construct(
         protected readonly CacheDriverFactory $factory,
-        protected  CacheContextResolver $resolver,
+        protected CacheContextResolver $resolver,
         protected readonly CacheConfiguration $config,
     ) {}
 
-
-
     /**
-     * Set active cache driver.
+     * Set active cache driver (Immutable).
      */
-    public function driver(
-        ?string $driver = null
-    ): static {
+    public function driver(?string $driver = null): static
+    {
+        $clone = clone $this;
+        $clone->driver = $driver;
 
-        $this->driver = $driver;
-
-        return $this;
+        return $clone;
     }
 
-
-
     /**
-     * Set cache store.
+     * Set cache store configuration name (Immutable).
      */
-    public function store(
-        ?string $store = null
-    ): static {
+    public function store(?string $store = null): static
+    {
+        $clone = clone $this;
+        $clone->store = $store;
 
-        $this->store = $store;
-
-        return $this;
+        return $clone;
     }
 
-
-
     /**
-     * Set cache context.
+     * Set cache context (Immutable).
      */
-    public function forContext(
-        ?string $tenantId,
-        ?string $schoolId
-    ): static {
+    public function forContext(?string $tenantId, ?string $schoolId): static
+    {
+        $clone = clone $this;
+        $clone->tenantId = $tenantId;
+        $clone->schoolId = $schoolId;
 
-        $this->tenantId = $tenantId;
-        $this->schoolId = $schoolId;
+        $clone->resolver = $this->resolver->forContext(
+            $tenantId,
+            $schoolId
+        );
 
-
-        $this->resolver =
-            $this->resolver->forContext(
-                $tenantId,
-                $schoolId
-            );
-
-
-        return $this;
+        return $clone;
     }
 
-
-
     /**
-     * Set cache tags.
+     * Set cache tags (Immutable).
      */
-    public function tags(
-        array|string $tags
-    ): static {
+    public function tags(array|string $tags): static
+    {
+        $clone = clone $this;
+        $clone->tags = is_array($tags) ? $tags : [$tags];
 
-        $this->tags =
-            is_array($tags)
-            ? $tags
-            : [$tags];
-
-
-        return $this;
+        return $clone;
     }
 
-
-
     /**
-     * Remember cached value.
+     * Remember cached value with optional atomic lock protection against cache stampedes.
      */
     public function remember(
         string $key,
         DateTimeInterface|DateInterval|int|null $ttl,
         Closure $callback
     ): mixed {
-
         $value = $this->get($key);
-
 
         if ($value !== null) {
             return $value;
         }
 
+        $driver = $this->resolveDriver();
+
+        // Attempt atomic locking to avoid race conditions if supported
+        if ($driver instanceof CacheDriver && method_exists($driver, 'lock')) {
+            $lockKey = 'lock:' . $this->resolveKey($key);
+
+            return $driver->lock($lockKey, 10)->block(10, function () use ($key, $ttl, $callback) {
+                // Re-check cache inside lock window
+                $value = $this->get($key);
+
+                if ($value !== null) {
+                    return $value;
+                }
+
+                $value = $callback();
+                $this->put($key, $value, $ttl);
+
+                return $value;
+            });
+        }
 
         $value = $callback();
-
-
-        $this->put(
-            $key,
-            $value,
-            $ttl
-        );
-
+        $this->put($key, $value, $ttl);
 
         return $value;
     }
-
-
 
     /**
      * Remember value forever.
@@ -187,58 +165,40 @@ final class CacheStoreManager implements CacheStoreContract
         string $key,
         Closure $callback
     ): mixed {
-
         $value = $this->get($key);
-
 
         if ($value !== null) {
             return $value;
         }
 
-
         $value = $callback();
-
-
-        $this->forever(
-            $key,
-            $value
-        );
-
+        $this->forever($key, $value);
 
         return $value;
     }
 
-
-
     /**
      * Create cache lock.
-     *
-     * Note:
-     * Drivers must support locking.
      */
     public function lock(
         string $key,
-        int $seconds
+        int $seconds = 0,
+        ?string $owner = null
     ): CacheLock {
-
         $driver = $this->resolveDriver();
 
-
         if (!method_exists($driver, 'lock')) {
-
             throw new \RuntimeException(
-                'Cache driver does not support locks.'
+                sprintf('Cache driver [%s] does not support locks.', get_class($driver))
             );
         }
 
-
         return $driver->lock(
             $this->resolveKey($key),
-            $seconds
+            $seconds,
+            $owner
         );
     }
-
-
 
     /**
      * Get cached item.
@@ -247,15 +207,12 @@ final class CacheStoreManager implements CacheStoreContract
         string $key,
         mixed $default = null
     ): mixed {
-
         return $this->resolveDriver()
             ->get(
                 $this->resolveKey($key),
                 $default
             );
     }
-
-
 
     /**
      * Store cached item.
@@ -265,7 +222,6 @@ final class CacheStoreManager implements CacheStoreContract
         mixed $value,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         return $this->resolveDriver()
             ->put(
                 $this->resolveKey($key),
@@ -274,16 +230,13 @@ final class CacheStoreManager implements CacheStoreContract
             );
     }
 
-
-
     /**
-     * Store forever.
+     * Store item indefinitely.
      */
     public function forever(
         string $key,
         mixed $value
     ): bool {
-
         return $this->resolveDriver()
             ->forever(
                 $this->resolveKey($key),
@@ -291,14 +244,11 @@ final class CacheStoreManager implements CacheStoreContract
             );
     }
 
-
-
     public function add(
         string $key,
         mixed $value,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         return $this->resolveDriver()
             ->add(
                 $this->resolveKey($key),
@@ -307,33 +257,24 @@ final class CacheStoreManager implements CacheStoreContract
             );
     }
 
-
-
     public function forget(
         string $key
     ): bool {
-
         return $this->resolveDriver()
             ->forget(
                 $this->resolveKey($key)
             );
     }
 
-
-
     public function flush(): bool
     {
-        return $this->resolveDriver()
-            ->flush();
+        return $this->resolveDriver()->flush();
     }
-
-
 
     public function increment(
         string $key,
         int $value = 1
     ): int {
-
         return $this->resolveDriver()
             ->increment(
                 $this->resolveKey($key),
@@ -341,21 +282,16 @@ final class CacheStoreManager implements CacheStoreContract
             );
     }
 
-
-
     public function decrement(
         string $key,
         int $value = 1
     ): int {
-
         return $this->resolveDriver()
             ->decrement(
                 $this->resolveKey($key),
                 $value
             );
     }
-
-
 
     public function many(array $keys): array
     {
@@ -378,21 +314,15 @@ final class CacheStoreManager implements CacheStoreContract
         return $resolved;
     }
 
-
-
     public function putMany(
         array $values,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         $resolved = [];
 
-
         foreach ($values as $key => $value) {
-
             $resolved[$this->resolveKey($key)] = $value;
         }
-
 
         return $this->resolveDriver()
             ->putMany(
@@ -401,13 +331,10 @@ final class CacheStoreManager implements CacheStoreContract
             );
     }
 
-
-
     public function pull(
         string $key,
         mixed $default = null
     ): mixed {
-
         return $this->resolveDriver()
             ->pull(
                 $this->resolveKey($key),
@@ -415,42 +342,35 @@ final class CacheStoreManager implements CacheStoreContract
             );
     }
 
-
-
     /**
      * Resolve active cache driver.
      */
     protected function resolveDriver(): CacheDriver
     {
-        $driver =
-            $this->driver
-            ??
-            $this->config->defaultDriver();
+        $driverName = $this->driver ?? $this->config->defaultDriver();
+        $cacheKey = $driverName . ':' . ($this->store ?? 'default');
 
-
-        if (!isset($this->drivers[$driver])) {
-
-            $this->drivers[$driver] =
-                $this->factory->make(
-                    $driver
-                );
+        if (!isset($this->drivers[$cacheKey])) {
+            $this->drivers[$cacheKey] = $this->factory->make(
+                $driverName,
+                $this->store
+            );
         }
 
-
-        return $this->drivers[$driver];
+        return $this->drivers[$cacheKey];
     }
-
-
 
     /**
      * Resolve context-aware key.
      */
-    protected function resolveKey(
-        string $key
-    ): string {
+    protected function resolveKey(string $key): string
+    {
+        // If an explicit context was set on this cloned instance via forContext(), use it;
+        // otherwise fetch the current ambient instance from the container.
+        $resolver = $this->tenantId !== null || $this->schoolId !== null
+            ? $this->resolver
+            : app(\SchoolPalm\CacheStore\Contracts\CacheContextResolver::class);
 
-        return $this->resolver->resolve(
-            $key
-        );
+        return $resolver->resolve($key);
     }
 }

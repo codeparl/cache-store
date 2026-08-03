@@ -6,6 +6,7 @@ namespace SchoolPalm\CacheStore\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use SchoolPalm\CacheStore\CacheDriverFactory;
+use SchoolPalm\CacheStore\Contracts\CacheContextResolver as CacheContextResolverContract;
 use SchoolPalm\CacheStore\Context\CacheContextResolver;
 use SchoolPalm\CacheStore\Context\CacheKeyBuilder;
 use SchoolPalm\CacheStore\Manager\CacheStoreManager;
@@ -16,13 +17,6 @@ final class CacheStoreServiceProvider extends ServiceProvider
 {
     /**
      * Register package services.
-     *
-     * Registers:
-     * - CacheSerializer as a singleton
-     * - CacheConfiguration from the published config
-     * - CacheContextResolver
-     * - CacheDriverFactory
-     * - CacheStoreManager
      */
     public function register(): void
     {
@@ -31,15 +25,12 @@ final class CacheStoreServiceProvider extends ServiceProvider
             fn() => new CacheSerializer()
         );
 
-
         $this->app->singleton(
             CacheConfiguration::class,
             fn($app) => new CacheConfiguration(
-                $app->make('config')
-                    ->get('cache-store', [])
+                $app->make('config')->get('cache-store', [])
             )
         );
-
 
         $this->app->singleton(
             CacheKeyBuilder::class,
@@ -48,39 +39,44 @@ final class CacheStoreServiceProvider extends ServiceProvider
             )
         );
 
-
+        // Bind the interface to concrete implementation so container rebinding works seamlessly
         $this->app->singleton(
-            CacheContextResolver::class,
+            CacheContextResolverContract::class,
             fn($app) => new CacheContextResolver(
                 $app->make(CacheKeyBuilder::class)
             )
         );
 
+        // Alias class-string to interface for convenience
+        $this->app->alias(
+            CacheContextResolverContract::class,
+            CacheContextResolver::class
+        );
 
         $this->app->singleton(
             CacheDriverFactory::class,
             fn($app) => new CacheDriverFactory($app)
         );
 
-
+        // Register CacheStoreManager dynamic instance
         $this->app->singleton(
-            'cache-store',
+            CacheStoreManager::class,
             fn($app) => new CacheStoreManager(
                 $app->make(CacheDriverFactory::class),
-                $app->make(CacheContextResolver::class),
+                $app->make(CacheContextResolverContract::class),
                 $app->make(CacheConfiguration::class)
             )
         );
+
+        // Bind string key for Facade root resolution
+        $this->app->singleton(
+            'cache-store',
+            fn($app) => $app->make(CacheStoreManager::class)
+        );
     }
-
-
 
     /**
      * Bootstrap package services.
-     *
-     * Publishes:
-     * - configuration
-     * - database migrations
      */
     public function boot(): void
     {
@@ -98,7 +94,6 @@ final class CacheStoreServiceProvider extends ServiceProvider
             ],
             'cache-store-config'
         );
-
 
         /*
         |--------------------------------------------------------------------------

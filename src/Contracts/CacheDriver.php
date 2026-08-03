@@ -152,4 +152,15 @@ interface CacheDriver
         array $values,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool;
+
+
+    /**
+     * Get the underlying storage path or identifier for a given key, if supported.
+     */
+    public function getPath(string $key): ?string;
+
+    /**
+     * Get the low-level store instance (e.g., Illuminate\Cache\Store).
+     */
+    public function getStore(): mixed;
 }

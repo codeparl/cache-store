@@ -8,11 +8,12 @@ use Closure;
 use DateInterval;
 use DateTimeInterface;
 use Illuminate\Cache\CacheLock;
+use Illuminate\Cache\Lock;
 
 /**
  * Interface CacheStore
  *
- * Defines the contract for the high-level cache manager, providing 
+ * Defines the contract for the high-level cache manager, providing
  * context-aware caching, tagging, and atomic locks.
  */
 interface CacheStore
@@ -79,17 +80,6 @@ interface CacheStore
         Closure $callback
     ): mixed;
 
-    /**
-     * Get a lock instance for the given key.
-     *
-     * @param string $key The lock key.
-     * @param int $seconds The number of seconds the lock should be held.
-     * @return CacheLock
-     */
-    public function lock(
-        string $key,
-        int $seconds
-    ): CacheLock;
 
     /**
      * Retrieve an item from the cache by key.
@@ -217,4 +207,14 @@ interface CacheStore
         string $key,
         mixed $default = null
     ): mixed;
+
+    /**
+     * Get a lock instance.
+     *
+     * @param string $key
+     * @param int $seconds
+     * @param string|null $owner
+     * @return Lock
+     */
+    public function lock(string $key, int $seconds = 0, ?string $owner = null): CacheLock;
 }

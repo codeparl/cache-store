@@ -6,6 +6,8 @@ namespace SchoolPalm\CacheStore\Drivers;
 
 use DateInterval;
 use DateTimeInterface;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use SchoolPalm\CacheStore\Contracts\CacheDriver;
 use SchoolPalm\CacheStore\Support\CacheSerializer;
@@ -59,7 +61,6 @@ final class LaravelCacheDriver implements CacheDriver
         protected CacheSerializer $serializer
     ) {}
 
-
     /**
      * Retrieve an item from cache.
      *
@@ -74,7 +75,6 @@ final class LaravelCacheDriver implements CacheDriver
         string $key,
         mixed $default = null
     ): mixed {
-
         $value = $this->cache->get($key);
 
         if ($value === null) {
@@ -83,7 +83,6 @@ final class LaravelCacheDriver implements CacheDriver
 
         return $this->serializer->unserialize($value);
     }
-
 
     /**
      * Store an item in cache.
@@ -99,14 +98,12 @@ final class LaravelCacheDriver implements CacheDriver
         mixed $value,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         return $this->cache->put(
             $key,
             $this->serializer->serialize($value),
             $ttl
         );
     }
-
 
     /**
      * Store an item permanently.
@@ -117,13 +114,11 @@ final class LaravelCacheDriver implements CacheDriver
         string $key,
         mixed $value
     ): bool {
-
         return $this->cache->forever(
             $key,
             $this->serializer->serialize($value)
         );
     }
-
 
     /**
      * Determine if an item exists.
@@ -133,12 +128,8 @@ final class LaravelCacheDriver implements CacheDriver
     public function has(
         string $key
     ): bool {
-
-        return $this->cache->has(
-            $key
-        );
+        return $this->cache->has($key);
     }
-
 
     /**
      * Add an item only if it does not exist.
@@ -150,7 +141,6 @@ final class LaravelCacheDriver implements CacheDriver
         mixed $value,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         return $this->cache->add(
             $key,
             $this->serializer->serialize($value),
@@ -158,19 +148,14 @@ final class LaravelCacheDriver implements CacheDriver
         );
     }
 
-
     /**
      * Remove an item from cache.
      */
     public function forget(
         string $key
     ): bool {
-
-        return $this->cache->forget(
-            $key
-        );
+        return $this->cache->forget($key);
     }
-
 
     /**
      * Retrieve and remove an item.
@@ -182,7 +167,6 @@ final class LaravelCacheDriver implements CacheDriver
         string $key,
         mixed $default = null
     ): mixed {
-
         $value = $this->cache->pull($key);
 
         if ($value === null) {
@@ -191,7 +175,6 @@ final class LaravelCacheDriver implements CacheDriver
 
         return $this->serializer->unserialize($value);
     }
-
 
     /**
      * Increment a numeric value.
@@ -203,13 +186,8 @@ final class LaravelCacheDriver implements CacheDriver
         string $key,
         int $value = 1
     ): int {
-
-        return $this->cache->increment(
-            $key,
-            $value
-        );
+        return $this->cache->increment($key, $value);
     }
-
 
     /**
      * Decrement a numeric value.
@@ -221,13 +199,8 @@ final class LaravelCacheDriver implements CacheDriver
         string $key,
         int $value = 1
     ): int {
-
-        return $this->cache->decrement(
-            $key,
-            $value
-        );
+        return $this->cache->decrement($key, $value);
     }
-
 
     /**
      * Retrieve multiple values.
@@ -238,11 +211,9 @@ final class LaravelCacheDriver implements CacheDriver
     public function many(
         array $keys
     ): array {
-
         $values = [];
 
         foreach ($keys as $key) {
-
             $stored = $this->cache->get($key);
 
             $values[$key] = $stored !== null
@@ -253,8 +224,7 @@ final class LaravelCacheDriver implements CacheDriver
         return $values;
     }
 
-
-    /** 
+    /**
      * Store multiple values.
      *
      * Each value is serialized before storage.
@@ -263,9 +233,7 @@ final class LaravelCacheDriver implements CacheDriver
         array $values,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         foreach ($values as $key => $value) {
-
             $this->cache->put(
                 $key,
                 $this->serializer->serialize($value),
@@ -275,7 +243,6 @@ final class LaravelCacheDriver implements CacheDriver
 
         return true;
     }
-
 
     /**
      * Remove all cached items.
@@ -289,21 +256,53 @@ final class LaravelCacheDriver implements CacheDriver
         $store = $this->cache->getStore();
 
         if (method_exists($store, 'flush')) {
-
             return $store->flush();
         }
 
         return false;
     }
 
-
-    /** 
-     * Return the underlying Laravel cache repository.
+    /**
+     * Create an atomic cache lock if supported by the underlying store.
      *
-     * Useful for advanced operations.
+     * @param string $key The key for the lock.
+     * @param int $seconds The number of seconds the lock should be held.
+     * @param string|null $owner The lock owner identifier.
+     * @return Lock
+     * @throws \RuntimeException If the underlying store does not support atomic locks.
      */
-    public function getStore(): Repository
+    public function lock(string $key, int $seconds = 0, ?string $owner = null): Lock
     {
-        return $this->cache;
+        $store = $this->cache->getStore();
+
+        if ($store instanceof LockProvider) {
+            return $store->lock($key, $seconds, $owner);
+        }
+
+        throw new \RuntimeException(
+            sprintf('Cache store [%s] does not support atomic locks.', get_class($store))
+        );
+    }
+
+    /**
+     * Get path identifier (delegates to the underlying store if available).
+     */
+    public function getPath(string $key): ?string
+    {
+        $store = $this->cache->getStore();
+
+        if (method_exists($store, 'path')) {
+            return $store->path($key);
+        }
+
+        return null;
+    }
+
+    /**
+     * Return the underlying Laravel cache store instance.
+     */
+    public function getStore(): mixed
+    {
+        return $this->cache->getStore();
     }
 }

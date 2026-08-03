@@ -6,6 +6,8 @@ namespace SchoolPalm\CacheStore\Drivers;
 
 use DateInterval;
 use DateTimeInterface;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use SchoolPalm\CacheStore\Contracts\CacheDriver;
 use SchoolPalm\CacheStore\Support\CacheSerializer;
@@ -49,14 +51,13 @@ final class ArrayCacheDriver implements CacheDriver
     /**
      * Create a new array cache driver.
      *
-     * @param Repository $cache       The underlying cache repository.
+     * @param Repository      $cache      The underlying cache repository.
      * @param CacheSerializer $serializer The serializer for value serialization.
      */
     public function __construct(
         private readonly Repository $cache,
         protected CacheSerializer $serializer
     ) {}
-
 
     /**
      * Store an item in cache.
@@ -72,14 +73,12 @@ final class ArrayCacheDriver implements CacheDriver
         mixed $value,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         return $this->cache->put(
             $key,
             $this->serializer->serialize($value),
             $ttl
         );
     }
-
 
     /**
      * Store an item permanently.
@@ -90,13 +89,11 @@ final class ArrayCacheDriver implements CacheDriver
         string $key,
         mixed $value
     ): bool {
-
         return $this->cache->forever(
             $key,
             $this->serializer->serialize($value)
         );
     }
-
 
     /**
      * Retrieve an item from cache.
@@ -109,10 +106,7 @@ final class ArrayCacheDriver implements CacheDriver
         string $key,
         mixed $default = null
     ): mixed {
-
-        $value = $this->cache->get(
-            $key
-        );
+        $value = $this->cache->get($key);
 
         if ($value === null) {
             return $default;
@@ -121,21 +115,15 @@ final class ArrayCacheDriver implements CacheDriver
         return $this->serializer->unserialize($value);
     }
 
-
     /**
      * Determine whether an item exists.
      *
      * Only checks key existence without unserializing the value.
      */
-    public function has(
-        string $key
-    ): bool {
-
-        return $this->cache->has(
-            $key
-        );
+    public function has(string $key): bool
+    {
+        return $this->cache->has($key);
     }
-
 
     /**
      * Store an item only if it does not already exist.
@@ -147,7 +135,6 @@ final class ArrayCacheDriver implements CacheDriver
         mixed $value,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         return $this->cache->add(
             $key,
             $this->serializer->serialize($value),
@@ -155,19 +142,13 @@ final class ArrayCacheDriver implements CacheDriver
         );
     }
 
-
     /**
      * Remove an item from cache.
      */
-    public function forget(
-        string $key
-    ): bool {
-
-        return $this->cache->forget(
-            $key
-        );
+    public function forget(string $key): bool
+    {
+        return $this->cache->forget($key);
     }
-
 
     /**
      * Retrieve an item and remove it.
@@ -179,10 +160,7 @@ final class ArrayCacheDriver implements CacheDriver
         string $key,
         mixed $default = null
     ): mixed {
-
-        $value = $this->cache->pull(
-            $key
-        );
+        $value = $this->cache->pull($key);
 
         if ($value === null) {
             return $default;
@@ -190,7 +168,6 @@ final class ArrayCacheDriver implements CacheDriver
 
         return $this->serializer->unserialize($value);
     }
-
 
     /**
      * Increment a numeric cache value.
@@ -202,13 +179,8 @@ final class ArrayCacheDriver implements CacheDriver
         string $key,
         int $value = 1
     ): int {
-
-        return $this->cache->increment(
-            $key,
-            $value
-        );
+        return $this->cache->increment($key, $value);
     }
-
 
     /**
      * Decrement a numeric cache value.
@@ -220,13 +192,8 @@ final class ArrayCacheDriver implements CacheDriver
         string $key,
         int $value = 1
     ): int {
-
-        return $this->cache->decrement(
-            $key,
-            $value
-        );
+        return $this->cache->decrement($key, $value);
     }
-
 
     /**
      * Retrieve multiple cache values.
@@ -234,14 +201,11 @@ final class ArrayCacheDriver implements CacheDriver
      * Each stored value is unserialized before being returned.
      * Keys that do not exist will have a null value in the result.
      */
-    public function many(
-        array $keys
-    ): array {
-
+    public function many(array $keys): array
+    {
         $values = [];
 
         foreach ($keys as $key) {
-
             $stored = $this->cache->get($key);
 
             $values[$key] = $stored !== null
@@ -252,7 +216,6 @@ final class ArrayCacheDriver implements CacheDriver
         return $values;
     }
 
-
     /**
      * Store multiple cache values.
      *
@@ -262,9 +225,7 @@ final class ArrayCacheDriver implements CacheDriver
         array $values,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         foreach ($values as $key => $value) {
-
             $this->cache->put(
                 $key,
                 $this->serializer->serialize($value),
@@ -275,7 +236,6 @@ final class ArrayCacheDriver implements CacheDriver
         return true;
     }
 
-
     /**
      * Remove all cache items.
      *
@@ -283,9 +243,44 @@ final class ArrayCacheDriver implements CacheDriver
      */
     public function flush(): bool
     {
-        return $this->cache
-            ->getStore()
-            ->flush();
+        return $this->cache->getStore()->flush();
+    }
+
+    /**
+     * Create an in-memory atomic cache lock.
+     *
+     * @param string $key The key for the lock.
+     * @param int $seconds The number of seconds the lock should be held.
+     * @param string|null $owner The lock owner identifier.
+     * @return Lock
+     * @throws \RuntimeException If the underlying store does not support atomic locking.
+     */
+    public function lock(string $key, int $seconds = 0, ?string $owner = null): Lock
+    {
+        $store = $this->cache->getStore();
+
+        if ($store instanceof LockProvider) {
+            return $store->lock($key, $seconds, $owner);
+        }
+
+        throw new \RuntimeException(
+            sprintf('Cache store [%s] does not support atomic locks.', get_class($store))
+        );
+    }
+
+    /**
+     * Get path identifier (always returns null for in-memory array storage).
+     */
+    public function getPath(string $key): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Get the underlying ArrayStore instance.
+     */
+    public function getStore(): mixed
+    {
+        return $this->cache->getStore();
     }
 }
-

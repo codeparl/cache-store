@@ -6,6 +6,8 @@ namespace SchoolPalm\CacheStore\Drivers;
 
 use DateInterval;
 use DateTimeInterface;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use SchoolPalm\CacheStore\Contracts\CacheDriver;
 use SchoolPalm\CacheStore\Support\CacheSerializer;
@@ -101,7 +103,6 @@ final class DatabaseCacheDriver implements CacheDriver
         string $key,
         mixed $default = null
     ): mixed {
-
         $value = $this->cache->get($key);
 
         if ($value === null) {
@@ -189,7 +190,6 @@ final class DatabaseCacheDriver implements CacheDriver
         string $key,
         mixed $default = null
     ): mixed {
-
         $value = $this->cache->pull($key);
 
         if ($value === null) {
@@ -251,11 +251,9 @@ final class DatabaseCacheDriver implements CacheDriver
     public function many(
         array $keys
     ): array {
-
         $results = [];
 
         foreach ($keys as $key) {
-
             $stored = $this->cache->get($key);
 
             $results[$key] = $stored !== null
@@ -279,9 +277,7 @@ final class DatabaseCacheDriver implements CacheDriver
         array $values,
         DateTimeInterface|DateInterval|int|null $ttl = null
     ): bool {
-
         foreach ($values as $key => $value) {
-
             $this->cache->put(
                 $key,
                 $this->serializer->serialize($value),
@@ -291,5 +287,42 @@ final class DatabaseCacheDriver implements CacheDriver
 
         return true;
     }
-}
 
+    /**
+     * Create an atomic cache lock.
+     *
+     * @param string $key The key for the lock.
+     * @param int $seconds The number of seconds the lock should be held.
+     * @param string|null $owner The lock owner identifier.
+     * @return Lock
+     * @throws \RuntimeException If the underlying store does not support atomic locking.
+     */
+    public function lock(string $key, int $seconds = 0, ?string $owner = null): Lock
+    {
+        $store = $this->cache->getStore();
+
+        if ($store instanceof LockProvider) {
+            return $store->lock($key, $seconds, $owner);
+        }
+
+        throw new \RuntimeException(
+            sprintf('Cache store [%s] does not support atomic locks.', get_class($store))
+        );
+    }
+
+    /**
+     * Get path identifier (always returns null for database storage).
+     */
+    public function getPath(string $key): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Get the underlying DatabaseStore instance.
+     */
+    public function getStore(): mixed
+    {
+        return $this->cache->getStore();
+    }
+}

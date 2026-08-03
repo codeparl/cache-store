@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace SchoolPalm\CacheStore;
 
 use Closure;
-use InvalidArgumentException;
 use Illuminate\Contracts\Container\Container;
+use InvalidArgumentException;
 use SchoolPalm\CacheStore\Contracts\CacheDriver;
 use SchoolPalm\CacheStore\Drivers\ArrayCacheDriver;
 use SchoolPalm\CacheStore\Drivers\DatabaseCacheDriver;
@@ -48,10 +48,9 @@ final class CacheDriverFactory
     /**
      * Custom driver creators.
      *
-     * @var array<string, Closure(Container): CacheDriver>
+     * @var array<string, Closure(Container, ?string): CacheDriver>
      */
     private array $customCreators = [];
-
 
     /**
      * Built-in driver mappings.
@@ -59,21 +58,13 @@ final class CacheDriverFactory
      * @var array<string, class-string<CacheDriver>>
      */
     private array $drivers = [
-
         'array' => ArrayCacheDriver::class,
-
         'memory' => MemoryCacheDriver::class,
-
         'file' => FileCacheDriver::class,
-
         'database' => DatabaseCacheDriver::class,
-
         'redis' => RedisCacheDriver::class,
-
         'laravel' => LaravelCacheDriver::class,
-
     ];
-
 
     /**
      * Create a new cache driver factory.
@@ -82,52 +73,49 @@ final class CacheDriverFactory
         private readonly Container $container
     ) {}
 
-
     /**
      * Create a cache driver instance.
      *
+     * @param string $driver The driver name (e.g., 'redis', 'memory').
+     * @param string|null $store Optional named store configuration.
+     * @return CacheDriver
      * @throws InvalidArgumentException
      */
     public function make(
-        string $driver
+        string $driver,
+        ?string $store = null
     ): CacheDriver {
-
-        $driver = strtolower($driver);
-
+        $driverKey = strtolower($driver);
 
         /*
         |--------------------------------------------------------------------------
         | Custom Drivers
         |--------------------------------------------------------------------------
         */
-
-        if (isset($this->customCreators[$driver])) {
-
-            return ($this->customCreators[$driver])(
-                $this->container
+        if (isset($this->customCreators[$driverKey])) {
+            return ($this->customCreators[$driverKey])(
+                $this->container,
+                $store
             );
         }
-
 
         /*
         |--------------------------------------------------------------------------
         | Built-in Drivers
         |--------------------------------------------------------------------------
         */
+        if (isset($this->drivers[$driverKey])) {
+            $driverClass = $this->drivers[$driverKey];
 
-        if (isset($this->drivers[$driver])) {
-
-            return $this->container->make(
-                $this->drivers[$driver]
-            );
+            return $this->container->make($driverClass, [
+                'store' => $store,
+            ]);
         }
-
 
         throw new InvalidArgumentException(
             "Unsupported cache driver [{$driver}]."
         );
     }
-
 
     /**
      * Register a custom cache driver.
@@ -136,17 +124,18 @@ final class CacheDriverFactory
      *
      * CacheDriverFactory::extend(
      *     'mongodb',
-     *     fn($app) => new MongoCacheDriver()
+     *     fn($app, $store) => new MongoCacheDriver($store)
      * );
+     *
+     * @param string $driver
+     * @param Closure(Container, ?string): CacheDriver $creator
      */
     public function extend(
         string $driver,
         Closure $creator
     ): void {
-
         $this->customCreators[strtolower($driver)] = $creator;
     }
-
 
     /**
      * Determine whether a cache driver exists.
@@ -154,18 +143,16 @@ final class CacheDriverFactory
     public function has(
         string $driver
     ): bool {
-
         $driver = strtolower($driver);
 
         return isset($this->drivers[$driver])
             || isset($this->customCreators[$driver]);
     }
 
-
     /**
      * Get all available cache driver names.
      *
-     * @return array<int,string>
+     * @return array<int, string>
      */
     public function available(): array
     {
@@ -179,7 +166,6 @@ final class CacheDriverFactory
         );
     }
 
-
     /**
      * Register a built-in driver mapping.
      *
@@ -189,7 +175,6 @@ final class CacheDriverFactory
         string $name,
         string $driverClass
     ): void {
-
         $this->drivers[strtolower($name)] = $driverClass;
     }
 }

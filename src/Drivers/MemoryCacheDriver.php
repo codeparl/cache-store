@@ -6,12 +6,14 @@ namespace SchoolPalm\CacheStore\Drivers;
 
 use DateInterval;
 use DateTimeInterface;
+use Illuminate\Cache\Lock as BaseLock;
+use Illuminate\Contracts\Cache\Lock;
 use SchoolPalm\CacheStore\Contracts\CacheDriver;
 
 /**
  * Class MemoryCacheDriver
  *
- * A cache driver implementation that stores data in an array for the 
+ * A cache driver implementation that stores data in an array for the
  * lifecycle of the current PHP process/request.
  */
 final class MemoryCacheDriver implements CacheDriver
@@ -22,6 +24,13 @@ final class MemoryCacheDriver implements CacheDriver
      * @var array<string, array{value: mixed, expires: ?int}>
      */
     private array $items = [];
+
+    /**
+     * Active locks held in memory.
+     *
+     * @var array<string, array{owner: string, expires: int}>
+     */
+    private array $locks = [];
 
     /**
      * Store an item in the cache for a given number of seconds.
@@ -156,6 +165,7 @@ final class MemoryCacheDriver implements CacheDriver
     public function flush(): bool
     {
         $this->items = [];
+        $this->locks = [];
 
         return true;
     }
@@ -262,6 +272,83 @@ final class MemoryCacheDriver implements CacheDriver
         }
 
         return true;
+    }
+
+    /**
+     * Create an in-memory atomic cache lock.
+     *
+     * @param string $key The key for the lock.
+     * @param int $seconds The number of seconds the lock should be held.
+     * @param string|null $owner The lock owner identifier.
+     * @return Lock
+     */
+    public function lock(string $key, int $seconds = 0, ?string $owner = null): Lock
+    {
+        return new class($this->locks, $key, $seconds, $owner) extends BaseLock {
+            public function __construct(
+                private array &$locks,
+                string $name,
+                int $seconds,
+                ?string $owner = null
+            ) {
+                parent::__construct($name, $seconds, $owner);
+            }
+
+            public function acquire(): bool
+            {
+                if (isset($this->locks[$this->name])) {
+                    if (time() < $this->locks[$this->name]['expires']) {
+                        return false;
+                    }
+                }
+
+                $this->locks[$this->name] = [
+                    'owner' => $this->owner,
+                    'expires' => $this->seconds > 0 ? time() + $this->seconds : PHP_INT_MAX,
+                ];
+
+                return true;
+            }
+
+            public function release(): bool
+            {
+                if ($this->isOwnedByCurrentProcess()) {
+                    unset($this->locks[$this->name]);
+
+                    return true;
+                }
+
+                return false;
+            }
+
+            public function forceRelease(): void
+            {
+                unset($this->locks[$this->name]);
+            }
+
+            protected function getCurrentOwner(): string
+            {
+                return $this->locks[$this->name]['owner'] ?? '';
+            }
+        };
+    }
+
+    /**
+     * Get path identifier (always returns null for in-memory storage).
+     */
+    public function getPath(string $key): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Get the underlying memory storage array.
+     *
+     * @return array<string, array{value: mixed, expires: ?int}>
+     */
+    public function getStore(): array
+    {
+        return $this->items;
     }
 
     /**
